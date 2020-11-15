@@ -1,5 +1,5 @@
 #!/usr/bin/python
-
+import os
 from argparse import ArgumentParser
 import base64
 import hashlib
@@ -24,7 +24,7 @@ HMAC_SECRET_KEY = b'liU%yFt2'
 
 
 def generate_login_type(url, login_data):
-    return hmac.new(HMAC_SECRET_KEY, bytes(login_data.encode('utf-8') + (url[url.rfind("/") + 1:]).encode('utf-8')),
+    return hmac.new(HMAC_SECRET_KEY, bytes((login_data + os.path.basename(url)).encode("utf-8")),
                     hashlib.sha1).hexdigest()
 
 
