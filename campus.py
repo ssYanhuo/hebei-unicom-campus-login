@@ -13,6 +13,7 @@ import argparse
 URL_DOLOGIN                     = "https://icampus.hbwo10010.cn/ncampus/pfdoLogin"
 URL_KICK_DEVICE                 = "https://icampus.hbwo10010.cn/ncampus/kickNetAccount"
 URL_CONNECT_NET                 = "https://icampus.hbwo10010.cn/controlplatform/netConnect"
+URL_GET_NET_STATE               = "https://icampus.hbwo10010.cn/controlplatform/getNetStateFromAccount"
 URL_PORTAL                      = "http://web1n.com/"
 
 DES_SECRET_KEY_POST             = b'Fly@T2lI'
@@ -31,7 +32,7 @@ def request_data(url, login_data):
     if res.status_code != 200:
         print(res.text)
         exit(1)
-    
+
     return json.loads(str(decrypt(res.text, DES_SECRET_KEY_RESULT)))
 
 
@@ -76,14 +77,20 @@ token       = result["TOKEN"]
 
 
 # kick device
-if not args.no_kick_old_device:
-    print("Kicking old device...")
+print("Checking old device...")
 
-    result = request_data(URL_KICK_DEVICE, {"DEVICE_TYPE": "01", "ACCOUNT_TYPE": "1", "TOKEN": token, "ACCOUNT_ID": account_id})
-    if int(result["SUCCESS"]) == 0:
-        print("Old device kicked\n")
+result = request_data(URL_GET_NET_STATE, {"NET_ACCOUNT": net_account, "TOKEN": token, "ACCOUNT_ID": account_id})
+if int(result["NET_STATUS"]) == 1:
+    print("Old device detected")
+
+    if not args.no_kick_old_device:
+        result = request_data(URL_KICK_DEVICE, {"DEVICE_TYPE": "01", "ACCOUNT_TYPE": "1", "TOKEN": token, "ACCOUNT_ID": account_id})
+        if int(result["SUCCESS"]) == 0:
+            print("Old device kicked\n")
+        else:
+            print("Can not to kick device\n")
     else:
-        print("No need to kick any device\n")
+        print("No need to kick old device\n")
 
 
 # get ip and mac
@@ -109,9 +116,10 @@ print("Perform login...")
 
 result = request_data(URL_CONNECT_NET, {"MAC": mac, "IP": ip, "NET_PASSWD": net_passwd, "NET_ACCOUNT": net_account, "REDIRECTURL": redirect_url, "TOKEN": token, "ACCOUNT_ID": account_id})
 if int(result["SUCCESS"]) == 0:
-    create_time = int(json.loads(result["RESPONSE"])["created_at"]) + 60 * 60 # unicom bug...
-    login_time = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(create_time))
-
-    print("Login Successfully, login time: {}".format(login_time))
+    result = request_data(URL_GET_NET_STATE, {"NET_ACCOUNT": net_account, "TOKEN": token, "ACCOUNT_ID": account_id})
+    if int(result["NET_STATUS"]) == 1 and result["MAC"] == mac and result["IP"] == ip:
+        print("Login Successfully, login time: {}".format(result["START_TIME"]))
+    else:
+        print("Login failed: {}".format(result))
 else:
-    print("Can not login: {}".format(result["ERRORINFO"]))
+    print("Login failed: {}".format(result["ERRORINFO"]))
