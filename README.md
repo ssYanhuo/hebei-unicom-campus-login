@@ -9,9 +9,18 @@
 ## 如何使用
 1. clone 本仓库;
 2. 使用 ``` pip install ``` 补全未安装的模块
-3. 执行指令:
+
+登录:
 ```bash
 python campus.py [账号] [密码]
+```
+登出:
+```bash
+python campus.py [账号] [密码] --logout
+```
+查询在线设备:
+```bash
+python campus.py [账号] [密码] --check-device
 ```
 账号密码是 wo 的校园 app 登录手机号与密码，不是 pppoe 账号密码，这里需要注意下。
 
