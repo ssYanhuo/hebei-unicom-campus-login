@@ -31,7 +31,6 @@ def generate_real_params(url, login_data):
 
 def request_data(url, login_data):
     res = requests.get(url=url, params=generate_real_params(url, json.dumps(login_data)), timeout=5)
-
     if res.status_code == 200:
         return json.loads(str(decrypt(res.text, DES_SECRET_KEY_RESULT)))
     else:
@@ -42,13 +41,15 @@ def check_device(account_id, net_account, token):
     result = request_data(URL_GET_NET_STATE,
                           {"NET_ACCOUNT": net_account, "TOKEN": token, "ACCOUNT_ID": account_id})
 
-    return int(result["NET_STATUS"]) == 1, result["MAC"], result["IP"]
+    return int(result["NET_STATUS"]) == 1, result["MAC"], result["IP"], result
 
 
 def kick_device(account_id, token):
+    print("Kicking device...")
+    print({"DEVICE_TYPE": "01", "ACCOUNT_TYPE": "1", "TOKEN": token, "ACCOUNT_ID": account_id})
     result = request_data(URL_KICK_DEVICE,
                           {"DEVICE_TYPE": "01", "ACCOUNT_TYPE": "1", "TOKEN": token, "ACCOUNT_ID": account_id})
-    return int(result["SUCCESS"]) == 0
+    return int(result["SUCCESS"]) == 0, result
 
 
 def get_ip_mac():
@@ -60,13 +61,17 @@ def get_ip_mac():
     redirect_url_parse = parse.parse_qs(parse.urlparse(redirect_url).query)
 
     ip = redirect_url_parse["userip"][0]
-    mac = redirect_url_parse["user-mac"][0]
+    mac = redirect_url_parse["usermac"][0]
     nas_ip = redirect_url_parse["nasip"][0]
 
     return ip, mac, nas_ip, redirect_url
 
 
 def login(ip, mac, redirect_url, net_account, net_passwd, account_id, token):
+    data = {"MAC": mac, "IP": ip, "NET_PASSWD": net_passwd, "NET_ACCOUNT": net_account,
+                                            "REDIRECTURL": redirect_url, "TOKEN": token, "ACCOUNT_ID": account_id}
+    # Debug
+    # print(data)
     result = request_data(URL_CONNECT_NET, {"MAC": mac, "IP": ip, "NET_PASSWD": net_passwd, "NET_ACCOUNT": net_account,
                                             "REDIRECTURL": redirect_url, "TOKEN": token, "ACCOUNT_ID": account_id})
     return int(result["SUCCESS"]) == 0, result
@@ -76,17 +81,29 @@ def auth(username, password):
     ip = socket.gethostbyname(socket.gethostname())
     fake_imei = str(uuid.uuid4()).replace("-", "")
     random_code = str(uuid.uuid4()).replace("-", "")
+    data = {"IP_ADDRESS": ip, "IMEI": fake_imei, "AUTH_METH": "0",
+                                         "APP_VERSION": "2.3.2",
+                                         "RANDOM_CODE": random_code, "OS_VERSION": "10",
+                                         "OS": "ANDROID",
+                                         "PASSWORD": password, "PHONE_TYPE": "Android",
+                                         "PHONE_NAME": "Device",
+                                         "PHONE_NUMBER": username}
 
+    print("Auth start, requesting data from auth server: ")
+    # Debug
+    # print(data)
     result = request_data(URL_DO_LOGIN, {"IP_ADDRESS": ip, "IMEI": fake_imei, "AUTH_METH": "0",
                                          "APP_VERSION": "2.3.2",
                                          "RANDOM_CODE": random_code, "OS_VERSION": "10",
                                          "OS": "ANDROID",
                                          "PASSWORD": password, "PHONE_TYPE": "Android",
-                                         "PHONE_NAME": "Android Device",
+                                         "PHONE_NAME": "Device",
                                          "PHONE_NUMBER": username})
+    print(result)
 
     if int(result["SUCCESS"]) == 0:
-        return result["ACCOUNT_NET"], result["PASSWORD_NET"], result["ACCOUNT_ID"], result["TOKEN"]
+        #return result["ACCOUNT_NET"], result["PASSWORD_NET"], result["ACCOUNT_ID"], result["TOKEN"]
+        return result["TASTE_ACCOUNT_NET"], result["TASTE_PASSWORD_NET"], result["ACCOUNT_ID"], result["TOKEN"]
     else:
         raise Exception(result["ERRORINFO"].strip())
 
@@ -118,16 +135,20 @@ def main():
     # login
     print("Getting account info...")
     net_account, net_password, account_id, token = auth(args.username, args.password)
-    print("Account login successfully: account: {}\n".format(args.username))
+    print("Account login successfully, account: {}\n".format(args.username))
 
     # kick device
     print("Checking online device...")
-    result, mac, ip = check_device(account_id, net_account, token)
+    result, mac, ip, result_raw = check_device(account_id, net_account, token)
     if result:
         print("Online device detected: {}, {}".format(ip, mac))
+        # Debug
+        # print(result_raw)
 
         if not args.no_kick_old_device and not args.check_device:
-            if kick_device(account_id, token):
+            result, kick_result = kick_device(account_id, token)
+            print(kick_result)
+            if result:
                 print("Online device kicked\n")
             else:
                 print("Can not to kick device\n")
@@ -140,19 +161,20 @@ def main():
     # get ip and mac
     print("Getting IP and MAC Address...")
     ip, mac, nas_ip, redirect_url = get_ip_mac()
-    print("IP: {}, NAS IP: {}, MAC: {}\n".format(ip, nas_ip, mac))
+    print("IP: {}, NAS IP: {}, MAC: {}, \nREDIRECT_URL: {} \n".format(ip, nas_ip, mac, redirect_url))
 
     # post
     print("Perform login...")
     status, result = login(ip, mac, redirect_url, net_account, net_password, account_id, token)
     if status:
-        online_status, online_mac, online_ip = check_device(account_id, net_account, token)
+        online_status, online_mac, online_ip, result_raw = check_device(account_id, net_account, token)
         if online_status and online_mac == mac and online_ip == ip:
             print("Login Successfully, login time: {}".format(result["START_TIME"]))
         else:
             print("Login failed: {}".format(result))
     else:
         print("Login failed: {}".format(result["ERRORINFO"]))
+    print("Login Successfully")
 
 
 if __name__ == '__main__':
